@@ -50,6 +50,7 @@ Add to `~/.claude/settings.json`:
 | `veo_generate_video_from_image` | Generate video using an image as first frame |
 | `veo_get_operation_status` | Check status of a generation operation |
 | `veo_wait_for_video` | Poll until video completes (with timeout) |
+| `veo_download_video` | Download completed video to local file |
 | `veo_list_models` | List available Veo models |
 
 ## Models

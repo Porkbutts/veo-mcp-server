@@ -10,6 +10,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import axios, { AxiosError } from "axios";
+import * as fs from "fs";
+import * as path from "path";
 
 // Constants
 const API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
@@ -371,12 +373,22 @@ const ListModelsInputSchema = z.object({
     .describe("Output format: 'markdown' for human-readable or 'json' for machine-readable")
 }).strict();
 
+const DownloadVideoInputSchema = z.object({
+  video_uri: z.string()
+    .min(1, "Video URI is required")
+    .describe("The video URI from a completed generation operation"),
+  output_path: z.string()
+    .min(1, "Output path is required")
+    .describe("Local file path to save the video (e.g., '/path/to/video.mp4')")
+}).strict();
+
 // Type definitions from schemas
 type GenerateVideoInput = z.infer<typeof GenerateVideoInputSchema>;
 type GenerateVideoFromImageInput = z.infer<typeof GenerateVideoFromImageInputSchema>;
 type GetOperationStatusInput = z.infer<typeof GetOperationStatusInputSchema>;
 type WaitForVideoInput = z.infer<typeof WaitForVideoInputSchema>;
 type ListModelsInput = z.infer<typeof ListModelsInputSchema>;
+type DownloadVideoInput = z.infer<typeof DownloadVideoInputSchema>;
 
 // Create MCP server instance
 const server = new McpServer({
@@ -849,6 +861,93 @@ Returns:
       content: [{ type: "text", text: lines.join("\n") }],
       structuredContent: output
     };
+  }
+);
+
+server.registerTool(
+  "veo_download_video",
+  {
+    title: "Download Video",
+    description: `Download a generated video to a local file.
+
+The video URI from a completed operation requires authentication to download. This tool handles the authenticated download and saves the video locally.
+
+Args:
+  - video_uri (string): The video URI from a completed generation operation
+  - output_path (string): Local file path to save the video (e.g., '/path/to/video.mp4')
+
+Returns:
+  Confirmation of successful download with file path and size.
+
+Notes:
+  - Videos are stored on the server for 2 days after generation
+  - Must download within 2 days or the video will be deleted`,
+    inputSchema: DownloadVideoInputSchema,
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true
+    }
+  },
+  async (params: DownloadVideoInput) => {
+    try {
+      const apiKey = getApiKey();
+
+      // Download the video with authentication
+      const response = await axios({
+        method: "GET",
+        url: params.video_uri,
+        headers: {
+          "x-goog-api-key": apiKey
+        },
+        responseType: "arraybuffer",
+        timeout: 300000 // 5 minutes for large files
+      });
+
+      // Ensure directory exists
+      const dir = path.dirname(params.output_path);
+      if (dir && !fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
+      // Write the file
+      fs.writeFileSync(params.output_path, response.data);
+
+      const fileSizeBytes = response.data.length;
+      const fileSizeMB = (fileSizeBytes / (1024 * 1024)).toFixed(2);
+
+      const output = {
+        success: true,
+        output_path: params.output_path,
+        file_size_bytes: fileSizeBytes,
+        file_size_mb: parseFloat(fileSizeMB)
+      };
+
+      return {
+        content: [{
+          type: "text",
+          text: `Video downloaded successfully!\n\n**Path:** ${params.output_path}\n**Size:** ${fileSizeMB} MB`
+        }],
+        structuredContent: output
+      };
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        if (error.response?.status === 404) {
+          return {
+            isError: true,
+            content: [{
+              type: "text",
+              text: "Error: Video not found. It may have expired (videos are deleted after 2 days) or the URI is invalid."
+            }]
+          };
+        }
+      }
+      return {
+        isError: true,
+        content: [{ type: "text", text: handleApiError(error) }]
+      };
+    }
   }
 );
 
