@@ -30,22 +30,16 @@ Set your Gemini API key as an environment variable:
 export GEMINI_API_KEY="your-api-key-here"
 ```
 
-## Usage with Claude Desktop
+## Usage with Claude Code
 
-Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
-
-```json
-{
-  "mcpServers": {
-    "veo": {
-      "command": "node",
-      "args": ["/path/to/veo-mcp-server/dist/index.js"],
-      "env": {
-        "GEMINI_API_KEY": "your-api-key-here"
-      }
-    }
+```bash
+claude mcp add-json veo '{
+  "command": "node",
+  "args": ["/path/to/veo-mcp-server/dist/index.js"],
+  "env": {
+    "GEMINI_API_KEY": "your-api-key-here"
   }
-}
+}'
 ```
 
 ## Available Tools
